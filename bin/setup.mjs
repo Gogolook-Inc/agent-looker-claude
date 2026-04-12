@@ -7,6 +7,7 @@ import http from "http";
 import tty from "tty";
 import { createInterface } from "readline";
 import { execSync } from "child_process";
+import { fileURLToPath } from "url";
 import { CFG_PATH } from "../lib/config.mjs";
 
 const DEFAULT_MCP_URL = "https://agent-looker.whoscall.com/mcp";
@@ -416,19 +417,38 @@ console.log(`✓ Config saved to ${CFG_PATH}`);
 
 // ── 2. Update plugin .mcp.json if --mcp-url was provided ────────────────────
 
-const BIN_DIR = path.dirname(new URL(import.meta.url).pathname);
+const BIN_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+function updateMcpJson(mcpPath, newUrl) {
+  if (!fs.existsSync(mcpPath)) return false;
+  try {
+    const mcp = JSON.parse(fs.readFileSync(mcpPath, "utf8"));
+    if (!mcp.mcpServers?.["agent-looker"]) return false;
+    mcp.mcpServers["agent-looker"].url = newUrl;
+    fs.writeFileSync(mcpPath, JSON.stringify(mcp, null, 2) + "\n");
+    console.log(`✓ Updated .mcp.json at ${mcpPath} → ${newUrl}`);
+    return true;
+  } catch (e) {
+    console.error(`✗ Failed to update ${mcpPath}:`, e.message);
+    return false;
+  }
+}
 
 if (cliArgs.mcpUrl) {
-  const pluginMcpPath = path.join(BIN_DIR, "..", ".mcp.json");
-  if (fs.existsSync(pluginMcpPath)) {
-    try {
-      const mcp = JSON.parse(fs.readFileSync(pluginMcpPath, "utf8"));
-      if (mcp.mcpServers?.["agent-looker"]) {
-        mcp.mcpServers["agent-looker"].url = MCP_URL;
-        fs.writeFileSync(pluginMcpPath, JSON.stringify(mcp, null, 2) + "\n");
-        console.log(`✓ Plugin .mcp.json updated to ${MCP_URL}`);
+  // 2a. Update the marketplace source .mcp.json (source of truth for future installs)
+  updateMcpJson(path.join(BIN_DIR, "..", ".mcp.json"), MCP_URL);
+
+  // 2b. Update every cached installed copy: ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/.mcp.json
+  // Claude Code reads from the cache, not the marketplace source, so this is what actually takes effect.
+  const cacheRoot = path.join(CLAUDE_DIR, "plugins", "cache");
+  if (fs.existsSync(cacheRoot)) {
+    for (const marketplaceDir of fs.readdirSync(cacheRoot)) {
+      const pluginDir = path.join(cacheRoot, marketplaceDir, "agent-looker");
+      if (!fs.existsSync(pluginDir)) continue;
+      for (const versionDir of fs.readdirSync(pluginDir)) {
+        updateMcpJson(path.join(pluginDir, versionDir, ".mcp.json"), MCP_URL);
       }
-    } catch {}
+    }
   }
 }
 
