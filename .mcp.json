@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "agent-looker": {
-      "type": "streamable-http",
+      "type": "http",
       "url": "https://agent-looker.whoscall.com/mcp"
     }
   }
