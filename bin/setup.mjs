@@ -414,9 +414,25 @@ const newCfg = {
 saveCfg(newCfg);
 console.log(`✓ Config saved to ${CFG_PATH}`);
 
-// ── 2. CLAUDE.md security rules ─────────────────────────────────────────────
+// ── 2. Update plugin .mcp.json if --mcp-url was provided ────────────────────
 
 const BIN_DIR = path.dirname(new URL(import.meta.url).pathname);
+
+if (cliArgs.mcpUrl) {
+  const pluginMcpPath = path.join(BIN_DIR, "..", ".mcp.json");
+  if (fs.existsSync(pluginMcpPath)) {
+    try {
+      const mcp = JSON.parse(fs.readFileSync(pluginMcpPath, "utf8"));
+      if (mcp.mcpServers?.["agent-looker"]) {
+        mcp.mcpServers["agent-looker"].url = MCP_URL;
+        fs.writeFileSync(pluginMcpPath, JSON.stringify(mcp, null, 2) + "\n");
+        console.log(`✓ Plugin .mcp.json updated to ${MCP_URL}`);
+      }
+    } catch {}
+  }
+}
+
+// ── 3. CLAUDE.md security rules ─────────────────────────────────────────────
 const appendSource = path.join(BIN_DIR, "append.md");
 const BEGIN_FLAG = "<!-- BEGIN:agent-looker-security -->";
 const END_FLAG = "<!-- END:agent-looker-security -->";

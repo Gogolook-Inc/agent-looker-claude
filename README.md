@@ -59,12 +59,18 @@ claude plugin marketplace add Gogolook-Inc/agent-looker-claude
 claude plugin install agent-looker
 ```
 
+To install a pre-release version, specify the branch:
+
+```bash
+claude plugin marketplace add Gogolook-Inc/agent-looker-claude@develop
+```
+
 ### 2. Authenticate
 
 After installing the plugin, run the setup script to authenticate:
 
 ```bash
-node ~/.claude/plugins/marketplaces/agent-looker-claude/bin/setup.mjs
+node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs
 ```
 
 This will:

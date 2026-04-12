@@ -59,12 +59,18 @@ claude plugin marketplace add Gogolook-Inc/agent-looker-claude
 claude plugin install agent-looker
 ```
 
+如需安裝非穩定版本，可以指定分支：
+
+```bash
+claude plugin marketplace add Gogolook-Inc/agent-looker-claude@develop
+```
+
 ### 2. 認證
 
 安裝 plugin 後，執行 setup script 進行認證：
 
 ```bash
-node ~/.claude/plugins/marketplaces/agent-looker-claude/bin/setup.mjs
+node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs
 ```
 
 這會：
@@ -77,7 +83,7 @@ node ~/.claude/plugins/marketplaces/agent-looker-claude/bin/setup.mjs
 ## 解除安裝
 
 ```bash
-node ~/.claude/plugins/marketplaces/agent-looker-claude/bin/setup.mjs --uninstall
+node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs --uninstall
 ```
 
 這會移除 `~/.agent-looker.cfg`、CLAUDE.md 中的安全規則、已快取的 skills 和 MCP config 設定。
