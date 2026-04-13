@@ -4,8 +4,6 @@ import path from "path";
 import os from "os";
 import https from "https";
 import http from "http";
-import tty from "tty";
-import { createInterface } from "readline";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import { CFG_PATH } from "../lib/config.mjs";
@@ -139,215 +137,67 @@ function verifyToken(token) {
   });
 }
 
-function promptHidden(question) {
-  return new Promise((resolve) => {
-    process.stdout.write(question);
-    try {
-      const fd = fs.openSync("/dev/tty", "r+");
-      const stream = new tty.ReadStream(fd);
-      stream.setRawMode(true);
-      stream.resume();
-      let buf = "";
-      stream.on("data", (chunk) => {
-        const char = chunk.toString();
-        if (char === "\n" || char === "\r") {
-          stream.setRawMode(false);
-          stream.destroy();
-          process.stdout.write("\n");
-          resolve(buf);
-        } else if (char === "\u0003") {
-          process.exit();
-        } else {
-          buf += char;
-        }
-      });
-    } catch {
-      const rl = createInterface({ input: process.stdin, output: process.stdout });
-      rl.question("", (ans) => { rl.close(); resolve(ans.trim()); });
-    }
-  });
-}
+// ── Device flow ─────────────────────────────────────────────────────────────
 
-function promptChoice(question, options) {
-  return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    console.log(question);
-    options.forEach((o, i) => console.log(`  ${i + 1}) ${o.label}`));
-    rl.question("Choose [1]: ", (ans) => {
-      rl.close();
-      const raw = parseInt(ans || "1", 10);
-      const idx = isNaN(raw) ? 0 : Math.max(0, Math.min(raw - 1, options.length - 1));
-      resolve(options[idx].value);
-    });
-  });
-}
-
-function canOpenBrowser() {
-  if (process.env.SSH_CLIENT || process.env.SSH_TTY) return false;
-  if (!process.stdout.isTTY) return false;
-  return true;
-}
-
-function openBrowser(url) {
-  try {
-    const cmd = process.platform === "darwin" ? "open"
-      : process.platform === "win32" ? "start"
-      : "xdg-open";
-    execSync(`${cmd} "${url}"`, { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// ── Browser auth flow ───────────────────────────────────────────────────────
-
-const RESERVED_PORTS = new Set([
-  3000, 3001, 3333, 4000, 4200, 4321, 5000, 5173, 5174, 5500,
-  8000, 8080, 8081, 8443, 8888, 9000, 9090,
-]);
-
-function findPort() {
+function deviceFlowRequest(url, options = {}) {
   return new Promise((resolve, reject) => {
-    const server = http.createServer();
-    server.listen(0, "127.0.0.1", () => {
-      const port = server.address().port;
-      server.close(() => {
-        if (RESERVED_PORTS.has(port)) {
-          findPort().then(resolve).catch(reject);
-        } else {
-          resolve(port);
-        }
-      });
+    const parsed = new URL(url);
+    const lib = parsed.protocol === "https:" ? https : http;
+    const req = lib.request(url, options, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => resolve({ status: res.statusCode, body }));
     });
-    server.on("error", reject);
+    req.on("error", reject);
+    if (options.body) req.write(options.body);
+    req.end();
   });
 }
 
-function browserAuth(timeoutMs = 120_000) {
-  return new Promise(async (resolve, reject) => {
-    const port = await findPort();
-    let settled = false;
+async function deviceFlow() {
+  const baseUrl = MCP_URL.replace(/\/mcp$/, "");
 
-    const server = http.createServer((req, res) => {
-      const url = new URL(req.url, `http://localhost:${port}`);
-      if (url.pathname !== "/callback") {
-        res.writeHead(404);
-        res.end();
-        return;
-      }
-
-      const token = url.searchParams.get("token");
-      const email = url.searchParams.get("email") ?? "";
-
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agent-Looker — Authenticated</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f8fafc;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .card {
-      background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06);
-      padding: 48px 40px;
-      text-align: center;
-      max-width: 420px;
-      width: 100%;
-    }
-    .icon {
-      width: 56px; height: 56px;
-      background: #ecfdf5;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 20px;
-      font-size: 28px;
-    }
-    h1 { font-size: 20px; font-weight: 600; color: #111827; margin-bottom: 8px; }
-    .email { font-size: 14px; color: #6b7280; margin-bottom: 16px; }
-    .hint {
-      font-size: 13px;
-      color: #9ca3af;
-      border-top: 1px solid #f3f4f6;
-      padding-top: 16px;
-      margin-top: 8px;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon">&#x2714;</div>
-    <h1>Authenticated</h1>
-    ${email ? '<p class="email">' + email.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</p>' : ''}
-    <p class="hint">You can close this tab and return to the terminal.</p>
-  </div>
-  <script>setTimeout(()=>window.close(),3000)</script>
-</body>
-</html>`);
-
-      settled = true;
-      server.close();
-      clearTimeout(timer);
-      resolve({ token, email });
-    });
-
-    server.listen(port, "127.0.0.1", () => {
-      const authUrl = `${DASHBOARD_URL.replace(/\/dashboard$/, "")}/auth/cli?port=${port}`;
-      console.log(`\nOpening browser to authenticate...`);
-      console.log(`If the browser didn't open, visit: ${authUrl}\n`);
-      openBrowser(authUrl);
-      console.log("Waiting for authentication...");
-    });
-
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        server.close();
-        reject(new Error("Timed out waiting for browser authentication"));
-      }
-    }, timeoutMs);
-
-    server.on("error", (err) => {
-      if (!settled) {
-        settled = true;
-        reject(err);
-      }
-    });
+  // 1. Request a device code
+  const initRes = await deviceFlowRequest(`${baseUrl}/auth/device`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
   });
-}
 
-// ── Manual token flow ───────────────────────────────────────────────────────
-
-async function manualTokenFlow() {
-  const tokenUrl = `${DASHBOARD_URL}/tokens`;
-  console.log("");
-  console.log(`Create a token at: ${tokenUrl}`);
-  console.log("");
-
-  while (true) {
-    const token = await promptHidden("Paste your token here (input hidden): ");
-    process.stdout.write("Verifying... ");
-    const ok = await verifyToken(token);
-    if (ok) {
-      console.log("OK");
-      return { token, email: "" };
-    } else {
-      console.log(`Token rejected by ${MCP_URL} (401). Try again.`);
-    }
+  if (initRes.status !== 200) {
+    throw new Error(`Device flow init failed (${initRes.status}): ${initRes.body}`);
   }
+
+  const { device_code, verification_url, expires_in, interval } = JSON.parse(initRes.body);
+
+  console.log("");
+  console.log("Open the following URL in your browser to authorize:");
+  console.log("");
+  console.log(`  ${verification_url}`);
+  console.log("");
+  console.log(`Waiting for authorization (expires in ${expires_in}s)...`);
+
+  // 2. Poll until approved or expired
+  const pollUrl = `${baseUrl}/auth/device/token?code=${encodeURIComponent(device_code)}`;
+  const pollIntervalMs = (interval ?? 3) * 1000;
+  const deadline = Date.now() + expires_in * 1000;
+
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+    const pollRes = await deviceFlowRequest(pollUrl);
+    const data = JSON.parse(pollRes.body);
+
+    if (data.status === "ok") {
+      console.log("Authorized.");
+      return { token: data.token, email: "" };
+    }
+    if (data.status === "expired") {
+      throw new Error("Authorization expired. Run setup again.");
+    }
+    // status === "pending" — keep waiting
+  }
+
+  throw new Error("Timed out waiting for authorization.");
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
@@ -368,41 +218,8 @@ if (existingCfg.token) {
 }
 
 if (!skipAuth) {
-  if (canOpenBrowser()) {
-    const method = await promptChoice("\nHow to authenticate:", [
-      { label: "Open browser (recommended)", value: "browser" },
-      { label: "Paste token manually", value: "manual" },
-    ]);
+  result = await deviceFlow();
 
-    if (method === "browser") {
-      try {
-        result = await browserAuth();
-      } catch (err) {
-        console.log(`\n${err.message}`);
-        console.log("Falling back to manual token...\n");
-        result = await manualTokenFlow();
-      }
-    } else {
-      result = await manualTokenFlow();
-    }
-  } else {
-    result = await manualTokenFlow();
-  }
-
-  if (!result.token) {
-    console.log("No token received.");
-    process.exit(1);
-  }
-
-  if (result.email) {
-    process.stdout.write("Verifying token... ");
-    const ok = await verifyToken(result.token);
-    if (!ok) {
-      console.log("Token verification failed.");
-      process.exit(1);
-    }
-    console.log("OK");
-  }
 }
 
 // ── 1. Save to ~/.agent-looker.cfg ──────────────────────────────────────────
