@@ -256,13 +256,18 @@ function updateAllMcpCopies(mutate) {
 
   // Every cached installed copy: ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/.mcp.json
   // Claude Code reads from the cache, not the marketplace source, so this is what actually takes effect.
+  // Iterate all plugin dirs — updateMcpJson already guards on mcpServers["agent-looker"].
   const cacheRoot = process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR ?? path.join(CLAUDE_DIR, "plugins", "cache");
   if (fs.existsSync(cacheRoot)) {
     for (const marketplaceDir of fs.readdirSync(cacheRoot)) {
-      const pluginDir = path.join(cacheRoot, marketplaceDir, "agent-looker");
-      if (!fs.existsSync(pluginDir)) continue;
-      for (const versionDir of fs.readdirSync(pluginDir)) {
-        updateMcpJson(path.join(pluginDir, versionDir, ".mcp.json"), mutate);
+      const marketplacePath = path.join(cacheRoot, marketplaceDir);
+      if (!fs.statSync(marketplacePath).isDirectory()) continue;
+      for (const pluginName of fs.readdirSync(marketplacePath)) {
+        const pluginDir = path.join(marketplacePath, pluginName);
+        if (!fs.statSync(pluginDir).isDirectory()) continue;
+        for (const versionDir of fs.readdirSync(pluginDir)) {
+          updateMcpJson(path.join(pluginDir, versionDir, ".mcp.json"), mutate);
+        }
       }
     }
   }
