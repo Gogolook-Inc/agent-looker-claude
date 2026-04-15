@@ -232,34 +232,17 @@ const newCfg = {
 saveCfg(newCfg);
 console.log(`✓ Config saved to ${CFG_PATH}`);
 
-// ── 1b. Write auth token to CLAUDE_DIR/.mcp.json ────────────────────────────
-
-const claudeMcpPath = path.join(CLAUDE_DIR, ".mcp.json");
-if (fs.existsSync(claudeMcpPath)) {
-  try {
-    const mcp = JSON.parse(fs.readFileSync(claudeMcpPath, "utf8"));
-    if (mcp.mcpServers?.["agent-looker"]) {
-      mcp.mcpServers["agent-looker"].headers = { Authorization: `Bearer ${result.token}` };
-      fs.writeFileSync(claudeMcpPath, JSON.stringify(mcp, null, 2) + "\n");
-      console.log("✓ MCP auth header written");
-    }
-  } catch (e) {
-    console.error("✗ Failed to update .mcp.json:", e.message);
-  }
-}
-
-// ── 2. Update plugin .mcp.json if --mcp-url was provided ────────────────────
+// ── Helpers: .mcp.json writers ──────────────────────────────────────────────
 
 const BIN_DIR = path.dirname(fileURLToPath(import.meta.url));
 
-function updateMcpJson(mcpPath, newUrl) {
+function updateMcpJson(mcpPath, mutate) {
   if (!fs.existsSync(mcpPath)) return false;
   try {
     const mcp = JSON.parse(fs.readFileSync(mcpPath, "utf8"));
     if (!mcp.mcpServers?.["agent-looker"]) return false;
-    mcp.mcpServers["agent-looker"].url = newUrl;
+    mutate(mcp.mcpServers["agent-looker"]);
     fs.writeFileSync(mcpPath, JSON.stringify(mcp, null, 2) + "\n");
-    console.log(`✓ Updated .mcp.json at ${mcpPath} → ${newUrl}`);
     return true;
   } catch (e) {
     console.error(`✗ Failed to update ${mcpPath}:`, e.message);
@@ -267,11 +250,11 @@ function updateMcpJson(mcpPath, newUrl) {
   }
 }
 
-if (cliArgs.mcpUrl) {
-  // 2a. Update the marketplace source .mcp.json (source of truth for future installs)
-  updateMcpJson(path.join(BIN_DIR, "..", ".mcp.json"), MCP_URL);
+function updateAllMcpCopies(mutate) {
+  // Active user config
+  updateMcpJson(path.join(CLAUDE_DIR, ".mcp.json"), mutate);
 
-  // 2b. Update every cached installed copy: ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/.mcp.json
+  // Every cached installed copy: ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/.mcp.json
   // Claude Code reads from the cache, not the marketplace source, so this is what actually takes effect.
   const cacheRoot = process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR ?? path.join(CLAUDE_DIR, "plugins", "cache");
   if (fs.existsSync(cacheRoot)) {
@@ -279,10 +262,25 @@ if (cliArgs.mcpUrl) {
       const pluginDir = path.join(cacheRoot, marketplaceDir, "agent-looker");
       if (!fs.existsSync(pluginDir)) continue;
       for (const versionDir of fs.readdirSync(pluginDir)) {
-        updateMcpJson(path.join(pluginDir, versionDir, ".mcp.json"), MCP_URL);
+        updateMcpJson(path.join(pluginDir, versionDir, ".mcp.json"), mutate);
       }
     }
   }
+}
+
+// ── 1b. Write auth token to all .mcp.json copies ────────────────────────────
+
+updateAllMcpCopies((entry) => {
+  entry.headers = { Authorization: `Bearer ${result.token}` };
+});
+console.log("✓ MCP auth header written");
+
+// ── 2. Update plugin .mcp.json if --mcp-url was provided ────────────────────
+
+if (cliArgs.mcpUrl) {
+  // Also update the marketplace source .mcp.json (source of truth for future installs)
+  updateMcpJson(path.join(BIN_DIR, "..", ".mcp.json"), (entry) => { entry.url = MCP_URL; });
+  updateAllMcpCopies((entry) => { entry.url = MCP_URL; });
 }
 
 // ── 3. CLAUDE.md security rules ─────────────────────────────────────────────
