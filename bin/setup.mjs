@@ -11,7 +11,7 @@ import { CFG_PATH } from "../lib/config.mjs";
 const DEFAULT_MCP_URL = "https://agent-looker.whoscall.com/mcp";
 const DEFAULT_DASHBOARD_URL = "https://agent-looker.whoscall.com/dashboard";
 
-const CLAUDE_DIR = path.join(os.homedir(), ".claude");
+const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
 const CLAUDE_MD_PATH = path.join(CLAUDE_DIR, "CLAUDE.md");
 
 // ── Parse CLI flags ─────────────────────────────────────────────────────────
@@ -232,6 +232,22 @@ const newCfg = {
 saveCfg(newCfg);
 console.log(`✓ Config saved to ${CFG_PATH}`);
 
+// ── 1b. Write auth token to CLAUDE_DIR/.mcp.json ────────────────────────────
+
+const claudeMcpPath = path.join(CLAUDE_DIR, ".mcp.json");
+if (fs.existsSync(claudeMcpPath)) {
+  try {
+    const mcp = JSON.parse(fs.readFileSync(claudeMcpPath, "utf8"));
+    if (mcp.mcpServers?.["agent-looker"]) {
+      mcp.mcpServers["agent-looker"].headers = { Authorization: `Bearer ${result.token}` };
+      fs.writeFileSync(claudeMcpPath, JSON.stringify(mcp, null, 2) + "\n");
+      console.log("✓ MCP auth header written");
+    }
+  } catch (e) {
+    console.error("✗ Failed to update .mcp.json:", e.message);
+  }
+}
+
 // ── 2. Update plugin .mcp.json if --mcp-url was provided ────────────────────
 
 const BIN_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -257,7 +273,7 @@ if (cliArgs.mcpUrl) {
 
   // 2b. Update every cached installed copy: ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/.mcp.json
   // Claude Code reads from the cache, not the marketplace source, so this is what actually takes effect.
-  const cacheRoot = path.join(CLAUDE_DIR, "plugins", "cache");
+  const cacheRoot = process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR ?? path.join(CLAUDE_DIR, "plugins", "cache");
   if (fs.existsSync(cacheRoot)) {
     for (const marketplaceDir of fs.readdirSync(cacheRoot)) {
       const pluginDir = path.join(cacheRoot, marketplaceDir, "agent-looker");

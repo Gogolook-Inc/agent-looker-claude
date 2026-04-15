@@ -52,7 +52,26 @@ PostToolUse hook: text-checker
 
 ## 安裝
 
-### 1. 安裝 Plugin
+### 方式 A — 讓 Claude Code 幫你安裝
+
+將以下 prompt 直接貼入你的 Claude Code agent：
+
+```
+Please install the Agent Looker plugin by running these 3 commands in order:
+
+1. Run: claude plugin marketplace add Gogolook-Inc/agent-looker-claude
+2. Run: claude plugin install agent-looker
+3. Run: node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs
+   IMPORTANT: run step 3 with run_in_background: true, then immediately use the Monitor tool on the returned PID to stream its output. When a line containing an authentication URL appears, show it to me and remind me to open it in my browser. Keep monitoring until I confirm I have signed in, then check that the process exited successfully.
+
+After all steps complete, remind me to restart Claude Code to activate the plugin.
+```
+
+---
+
+### 方式 B — CLI（手動）
+
+#### 1. 安裝 Plugin
 
 ```bash
 claude plugin marketplace add Gogolook-Inc/agent-looker-claude
@@ -65,7 +84,7 @@ claude plugin install agent-looker
 claude plugin marketplace add Gogolook-Inc/agent-looker-claude@develop
 ```
 
-### 2. 認證
+#### 2. 認證
 
 安裝 plugin 後，執行 setup script 進行認證：
 
@@ -77,6 +96,8 @@ node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs
 1. 開啟瀏覽器登入（或讓你手動貼上 token）
 2. 將認證資訊存到 `~/.agent-looker.cfg`
 3. 將安全規則寫入 `~/.claude/CLAUDE.md`
+
+#### 3. 重新啟動 Claude Code
 
 完成後**重新啟動 Claude Code** 即可生效。
 

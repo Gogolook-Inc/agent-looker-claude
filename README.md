@@ -52,7 +52,26 @@ A safe URL can still serve malicious content. URL checks and content checks are 
 
 ## Installation
 
-### 1. Install the plugin
+### Option A — Let Claude Code install for you
+
+Paste the following prompt directly into your Claude Code agent:
+
+```
+Please install the Agent Looker plugin by running these 3 commands in order:
+
+1. Run: claude plugin marketplace add Gogolook-Inc/agent-looker-claude
+2. Run: claude plugin install agent-looker
+3. Run: node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs
+   IMPORTANT: run step 3 with run_in_background: true, then immediately use the Monitor tool on the returned PID to stream its output. When a line containing an authentication URL appears, show it to me and remind me to open it in my browser. Keep monitoring until I confirm I have signed in, then check that the process exited successfully.
+
+After all steps complete, remind me to restart Claude Code to activate the plugin.
+```
+
+---
+
+### Option B — CLI (manual)
+
+#### 1. Install the plugin
 
 ```bash
 claude plugin marketplace add Gogolook-Inc/agent-looker-claude
@@ -65,7 +84,7 @@ To install a pre-release version, specify the branch:
 claude plugin marketplace add Gogolook-Inc/agent-looker-claude@develop
 ```
 
-### 2. Authenticate
+#### 2. Authenticate
 
 After installing the plugin, run the setup script to authenticate:
 
@@ -77,6 +96,8 @@ This will:
 1. Open your browser to sign in (or let you paste a token manually)
 2. Save your credentials to `~/.agent-looker.cfg`
 3. Install security rules into `~/.claude/CLAUDE.md`
+
+#### 3. Restart Claude Code
 
 Then **restart Claude Code** to activate.
 
